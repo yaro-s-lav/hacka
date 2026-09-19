@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 from sqlalchemy import select,func
 from app.models import User,SessionRun,Audit,AccountState
-from app.telephony import ami_action
+from app.telephony import ami_action,voice_url
 started=time.monotonic()
 
 class ProcessCpuMeter:
@@ -98,7 +98,7 @@ def register_operations(app,db,current):
                 if name=='redis':redis.Redis.from_url(os.getenv('REDIS_URL','redis://redis:6379'),socket_connect_timeout=1,socket_timeout=1).ping()
                 elif name=='asterisk':ami_action('Ping')
                 else:
-                    urls={'ml':os.getenv('ML_URL','http://ml:8091')+'/health','voice':os.getenv('VOICE_URL','http://voice:8092')+'/health','ollama':os.getenv('OLLAMA_URL','http://ollama:11434')+'/api/tags','grammar':os.getenv('GRAMMAR_URL','http://grammar:8093')+'/v2/check?language=ru-RU&text=Тест'}
+                    urls={'ml':os.getenv('ML_URL','http://ml:8091')+'/health','voice':voice_url()+'/health','ollama':os.getenv('OLLAMA_URL','http://ollama:11434')+'/api/tags','grammar':os.getenv('GRAMMAR_URL','http://grammar:8093')+'/v2/check?language=ru-RU&text=Тест'}
                     with httpx.Client(timeout=1,trust_env=False) as c:c.get(urls[name]).raise_for_status()
                 return name,{'status':'ok'}
             except Exception as exc:return name,{'status':'unavailable','reason':type(exc).__name__}

@@ -56,7 +56,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       ML_URL: http://ml:8091
       GRAMMAR_URL: http://grammar:8093
-      VOICE_URL: http://voice:8092
+      VOICE_ENGINE: ${VOICE_ENGINE:-piper}
       TURN_SECRET: ${TURN_SECRET:-arm112-local-turn-change-me}
       ASTERISK_HOST: asterisk
       ASTERISK_AMI_SECRET: ${ASTERISK_AMI_SECRET:-arm112-local-ami-change-me}
@@ -66,7 +66,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-    ports: ["8000:8000"]
+    ports: ["8001:8000"]
     volumes:
       - app_data:/app/data/runtime
       - sip_provision:/provision
@@ -84,7 +84,7 @@ services:
       SIP_PUBLIC_ADDRESS: ${SIP_PUBLIC_ADDRESS:-127.0.0.1}
     ports:
       - "5060:5060/udp"
-      - "8088:8088"
+      - "8002:8088"
       - "10000-10100:10000-10100/udp"
     volumes:
       - sip_provision:/provision
@@ -102,6 +102,13 @@ services:
   voice:
     build: ./services/voice
     profiles: ["voip"]
+    volumes: ["call_media:/media"]
+    restart: unless-stopped
+  voice-silero:
+    build:
+      context: .
+      dockerfile: services/voice-silero/Dockerfile
+    profiles: ["silero"]
     volumes: ["call_media:/media"]
     restart: unless-stopped
   grammar:

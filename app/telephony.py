@@ -11,6 +11,11 @@ from app.workflows import get_run, ensure_writable, check_scenario_access, setti
 from app.speech_text import tts_text
 provision_lock=threading.Lock()
 
+def voice_url():
+    configured=os.getenv('VOICE_URL','').strip()
+    if configured:return configured.rstrip('/')
+    return 'http://voice-silero:8092' if os.getenv('VOICE_ENGINE','piper').lower()=='silero' else 'http://voice:8092'
+
 def frame(data):
     return ''.join(f'{key}: {value}\r\n' for key,value in data.items())+'\r\n'
 def read_frame(stream):
@@ -62,6 +67,9 @@ def write_accounts(s):
         for device in ('browser','hardware'):
             name=account.username+('-hw' if device=='hardware' else '')
             media = "webrtc=yes\nmedia_encryption=dtls\ndtls_auto_generate_cert=yes\nuse_avpf=yes\nice_support=yes\nrtcp_mux=yes" if device=='browser' else "webrtc=no\nmedia_encryption=no\nuse_avpf=no\nice_support=no\nrtcp_mux=no"
+            # The hardware phone is behind Docker's SIP NAT. Force its SDP media
+            # address to the server LAN address; browser/WebRTC must keep ICE.
+            media_address = '' if device=='browser' else f"media_address={os.getenv('SIP_PUBLIC_ADDRESS', '').strip()}"
             text+=f"""[{name}]
 type=endpoint
 transport={'transport-ws' if device=='browser' else 'transport-udp'}
@@ -73,6 +81,7 @@ auth={name}-auth
 aors={name}
 set_var=ARM_USER_ID={account.user_id}
 {media}
+{media_address}
 rtp_symmetric=yes
 force_rport=yes
 rewrite_contact=yes
@@ -99,7 +108,7 @@ def launch_worker(target,args):
 
 def prepare_speech(text,caller_name=''):
     with httpx.Client(timeout=httpx.Timeout(60,connect=5),trust_env=False) as client:
-        response=client.post(os.getenv('VOICE_URL','http://voice:8092')+'/speech',json={'text':tts_text(text),'caller_name':caller_name})
+        response=client.post(voice_url()+'/speech',json={'text':tts_text(text),'caller_name':caller_name})
         response.raise_for_status()
         speech=response.json()
     sound=speech.get('key','')
@@ -253,7 +262,7 @@ def register_telephony(app,db,current,session_factory):
         if u.role!='student' or extension not in messages:raise HTTPException(403)
         try:
             with httpx.Client(timeout=60,trust_env=False) as client:
-                response=client.post(os.getenv('VOICE_URL','http://voice:8092')+'/speech',json={'text':messages[extension],'caller_name':'Диспетчер Алексей'});response.raise_for_status();key=response.json()['key']
+                response=client.post(voice_url()+'/speech',json={'text':messages[extension],'caller_name':'Диспетчер Алексей'});response.raise_for_status();key=response.json()['key']
             if not key or any(c not in '0123456789abcdef' for c in key):raise ValueError('Invalid sound key')
             ami_action('Command',Command=f'database put arm112 service{extension} {key}')
         except (OSError,ConnectionError,httpx.HTTPError,ValueError) as exc:raise HTTPException(503,'Учебная служба телефонии недоступна') from exc
